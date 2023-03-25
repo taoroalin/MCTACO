@@ -24,8 +24,8 @@ print(data_dev[0])
 def question_to_pair(question):
     options ="\n".join([f"{i} {x[0]}" for i,x in enumerate(question[1])])
     answers = " ".join([str(i)+" "+x[1] for i,x in enumerate(question[1])])
-    return [{"role":"user","content":f"Consider the context '{question[0][0]}' and question '{question[0][1]}'. Which answers make sense?\n{options}"},{"role":"assistant","content":answers}]
-sys_prompt = {"role": "system", "content": "Your job is to classify which answers to natural language questions make sense. You will see some background context, a question, and 1 to 15 possible answers. You have to classify which ones make sense as answers to the question. Write each number followed by the classification 'yes' or 'no' seperated by spaces with no discussion or explanation. When there are multiple phrasings of the same answer, for instance 'yes, it was' and 'yes', or '24 hours' and '1 day', you must answer them all consistently. Sometimes there are no plausible answers, in which case you say no to all of them."}
+    return [{"role":"user","content":f"{question[0][0]}\n{question[0][1]}\n{options}"},{"role":"assistant","content":answers}]
+sys_prompt = {"role": "system", "content": "Your job is to win the MCTACO Your job is to classify which answers to natural language questions make sense. You will see some background context, a question, and 1 to 15 possible answers. You have to classify which ones make sense as answers to the question. Write each number followed by the classification 'yes' or 'no' seperated by spaces with no discussion or explanation. When there are multiple phrasings of the same answer, for instance 'yes, it was' and 'yes', or '24 hours' and '1 day', you must answer them all consistently. Sometimes there are no plausible answers, in which case you say no to all of them."}
 def generate_openai_chat(shot_questions, question):
     response = openai.ChatCompletion.create(
             model="gpt-4",# "gpt-3.5-turbo"

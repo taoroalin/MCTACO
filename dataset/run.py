@@ -5,69 +5,80 @@ import random
 import requests
 from tqdm import tqdm
 import json
-data_dev = [x.split("\t") for x in open("dev_3783.tsv").readlines()]
+from collections import defaultdict
+def to_by_question(rows):
+    by_question = []
+    for row in rows:
+        key = (row[0],row[1])
+        if len(by_question)==0 or by_question[-1][0]!=key:
+            by_question.append([key,[]])
+        by_question[-1][1].append(row)
+    return by_question
+
+data_dev =to_by_question( [x.split("\t") for x in open("dev_3783.tsv").readlines()])
 random.shuffle(data_dev)
-data_test = [x.split("\t") for x in open("test_9442.tsv").readlines()]
+data_test =to_by_question( [x.split("\t") for x in open("test_9442.tsv").readlines()])
 print(data_dev[0])
 
-def row_to_pair(row):
-    return [{"role":"user","content":f'Consider the context information "{row[0]}" and the question "{row[1]}". Is {row[2]} a plausible answer to this question?'},{"role":"assistant","content":row[3]}]
-sys_prompt = {"role": "system", "content": "Your job is to classify whether answers to natural language questions could be correct. Please answer with a single word, either yes or no, without explanation. In your last attempt, you made 30% more false positive predictions than false negative predictions."}
-def generate_openai_chat(shot_rows, row):
+
+def question_to_pair(question):
+    options ="\n".join([f"{i}. {x[2]}" for i,x in enumerate(question[1])])
+    answers = " ".join([str(i) for i,x in enumerate(question[1]) if x[3]=="yes"])
+    return [{"role":"user","content":f"Consider the context '{question[0][0]}' and question '{question[0][1]}'. Which of these answers are plausible?\n{options}"},{"role":"assistant","content":answers}]
+sys_prompt = {"role": "system", "content": "Your job is to classify which answers to natural language questions are plausible. You will see 1 to 15 options, and you have to classify which ones of them are plausible. Write the numbers of all the plausible answers seperated by spaces, without any discussion or explanation."}
+def generate_openai_chat(shot_questions, question):
     response = openai.ChatCompletion.create(
             model="gpt-4",# "gpt-3.5-turbo"
             temperature=1,
-            max_tokens=6000,
+            max_tokens=1,
             messages=[
                     sys_prompt,
-                    *itertools.chain(*[row_to_pair(x) for x in shot_rows+[row]])
+                    *itertools.chain(*[question_to_pair(x) for x in shot_questions+[question]])
                 ][:-1]
     )
     generation = response.choices[0].message.content  
     return generation  
-def generate_middleman(shot_rows, row):
+def generate_middleman(shot_questions, question):
+    messages = [
+                    sys_prompt,
+                    *itertools.chain(*[question_to_pair(x) for x in shot_questions+[question]])
+                ][:-1]
     req = {
         "n": 1,
 		"stop": [],
-        "chat_prompt":[
-                    sys_prompt,
-                    *itertools.chain(*[row_to_pair(x) for x in shot_rows+[row]])
-                ][:-1],
+        "chat_prompt":messages,
 		"api_key":
 			os.environ["MIDDLEMAN_API_KEY"],
-		"engine_public_name": "gpt-4",
+		"engine_public_name": "vengeful-lizard",
         "prevent_canary":True,
-		"max_tokens":6000,"temp":0,}
+		"max_tokens":1,"temp":0,}
     response = requests.post("https://middleman.modeleval.org/completions",json=req).json()
     return response["outputs"][0]["completion"]
 outfilename = "openai_output.txt"
 responses =[x for x in open(outfilename).read().split("\n") if len(x)>1] if os.path.isfile(outfilename) else []
 print(len(data_test),len(responses))
 print(responses[:3])
-k = 10
+k = 5
 from wrong_examples_using import few_shots
 wrong_examples = []
-picked_few_shots =[ ["She explained that Frank 's father was an alcoholic and that his mother worked as a toll booth operator .","How often does Frank's father drink?","every month","no"],["All Muslims-as he defined them-therefore must take up arms in this fight.","What day did the Muslims take arms?","monday","yes"],["The award was named after the chief justice of the Indiana Supreme Court to honor his statewide vision on justice.","How long was the chief justice in standing?","1.67 years","no"]]
-few_shots = few_shots[:k]
+
+few_shots = data_dev[:k]
 def evaluate():
     num_right=0
     false_n = 0
     false_p = 0
     pbar = tqdm(enumerate(data_dev[k:]))
-    for i,datum in pbar:
-        openai_response = generate_middleman(few_shots,datum)
+    for i,question in pbar:
+        openai_response = generate_middleman(few_shots,question)
         if openai_response not in ["yes","no"]:
             responses.append("invalid")
+        response_numbers = [int(x) for x in openai_response.split(" ")]
         responses.append(openai_response)
-        if openai_response==datum[3]:
+        if all([(i in response_numbers) == (q[3]=="yes") for i,q in enumerate(question[1])]):
             num_right+=1
-        elif openai_response=="yes":
-            wrong_examples.append(datum)
-            false_p+=1
-        elif openai_response=="no":
-            wrong_examples.append(datum)
-            false_n+=1
-        print(datum[0],datum[1],datum[2],datum[3],openai_response)
+            wrong_examples.append(question)
+        else:
+            print(question,openai_response)
         if len(wrong_examples)%10==0 and len(wrong_examples)!=0:
             open("wrong_examples","w").write(str(wrong_examples))
             
@@ -86,4 +97,29 @@ def run():
         if i%50==0 and i!=0:
             open(outfilename,"w").write("\n".join(responses))
     open(outfilename,"w").write("\n".join(responses))
-run()
+    
+def postlook():
+    zipped = list(zip(data_test, responses))
+    for datum,response in zipped[500:550]:
+        print(datum,response)
+    fraction = len([1 for datum,r in zipped if r==datum[3]])/len(zipped)
+    print("fraction",fraction)
+    emscores = defaultdict(list)
+    answer_trueness = defaultdict(lambda:[0,0])
+    for datum,response in zipped:
+        key = (datum[0],datum[1])
+        emscores[key].append(response==datum[3])
+        answer_trueness[key][0]+=1
+        if datum[3]=="yes":
+            answer_trueness[key][1]+=1
+    emscore = len([k for k,v in emscores.items() if all(v)])/len(emscores)
+    numoptions = [0 for _ in range(200)]
+    frac = [0 for _ in range(102)]
+    for k,v in answer_trueness.items():
+        numoptions[v[0]]+=1
+        frac[int(v[1]/v[0]*100)]+=1
+    print("emscore",emscore)
+    print("frac",frac)
+    print("numoptions",numoptions)
+    # next thing to do: show the model all the options at once, and choose 1 or 2 of them!
+evaluate()

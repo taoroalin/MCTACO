@@ -22,10 +22,10 @@ print(data_dev[0])
 
 
 def question_to_pair(question):
-    options ="\n".join([f"{i}. {x[0]}" for i,x in enumerate(question[1])])
+    options ="\n".join([f"{i} {x[0]}" for i,x in enumerate(question[1])])
     answers = " ".join([str(i)+" "+x[1] for i,x in enumerate(question[1])])
-    return [{"role":"user","content":f"Consider the context '{question[0][0]}' and question '{question[0][1]}'. Which of these answers are plausible?\n{options}"},{"role":"assistant","content":answers}]
-sys_prompt = {"role": "system", "content": "Your job is to classify which answers to natural language questions are plausible. You will see 1 to 15 options, and you have to classify which ones of them are plausible. Write each number followed by the classification 'yes' or 'no' seperated by spaces with no discussion or explanation. When there are multiple phrasings of the same answer, for instance 'yes, it was' and 'yes', or '24 hours' and '1 day', you must answer them consistently. Sometimes there are no plausible answers, in which case you say no to all of them."}
+    return [{"role":"user","content":f"Consider the context '{question[0][0]}' and question '{question[0][1]}'. Which answers make sense?\n{options}"},{"role":"assistant","content":answers}]
+sys_prompt = {"role": "system", "content": "Your job is to classify which answers to natural language questions make sense. You will see some background context, a question, and 1 to 15 possible answers. You have to classify which ones make sense as answers to the question. Write each number followed by the classification 'yes' or 'no' seperated by spaces with no discussion or explanation. When there are multiple phrasings of the same answer, for instance 'yes, it was' and 'yes', or '24 hours' and '1 day', you must answer them all consistently. Sometimes there are no plausible answers, in which case you say no to all of them."}
 def generate_openai_chat(shot_questions, question):
     response = openai.ChatCompletion.create(
             model="gpt-4",# "gpt-3.5-turbo"
@@ -58,11 +58,11 @@ outfilename = "openai_output.txt"
 responses =[x for x in open(outfilename).read().split("\n") if len(x)>1] if os.path.isfile(outfilename) else []
 print(len(data_test),len(responses))
 print(responses[:3])
-k = 8
+k = 14
 from wrong_examples_using import few_shots
 wrong_examples = []
 
-few_shots = data_dev[:k]
+few_shots = few_shots[:k]
 def evaluate():
     num_right=0
     false_n = 0
@@ -78,6 +78,7 @@ def evaluate():
             num_right+=1
         else:
             wrong_examples.append(question)
+            print("NUMBER",i)
             print(*question[0])
             print("\n".join([q+" "+b+" "+a for (q,b),a in zip(question[1], response_classes)]))
         if len(wrong_examples)%10==0 and len(wrong_examples)!=0:

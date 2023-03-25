@@ -24,8 +24,8 @@ print(data_dev[0])
 def question_to_pair(question):
     options ="\n".join([f"{i} {x[0]}" for i,x in enumerate(question[1])])
     answers = " ".join([str(i)+" "+x[1] for i,x in enumerate(question[1])])
-    return [{"role":"user","content":f"{question[0][0]}\n{question[0][1]}\n{options}"},{"role":"assistant","content":answers}]
-sys_prompt = {"role": "system", "content": """Your job is to classify which answers to natural language would be labelled as correct by most clould workers (eg MTurk workers). You will see some background context, a question, and 1 to 15 possible answers. 
+    return [{"role":"user","content":f"{question[0][0]} {question[0][1]}\n{options}"},{"role":"assistant","content":answers}]
+sys_prompt = {"role": "system", "content": """Your job is to classify which answers to common sense reasoning questions would be labelled as correct by most clould workers in (eg MTurk workers) in 2018. You will see some background context, a question, and 1 to 15 possible answers. 
 
 Some advice based on your past mistakes:
 
@@ -65,8 +65,9 @@ outfilename = "openai_output.txt"
 responses =[x for x in open(outfilename).read().split("\n") if len(x)>1] if os.path.isfile(outfilename) else []
 print(len(data_test),len(responses))
 print(responses[:3])
-k = 14
-from wrong_examples_using import few_shots
+k = 30
+from wrong_examples_using_old import few_shots
+print("fslen", len(few_shots))
 wrong_examples = []
 
 few_shots = few_shots[:k]

@@ -12,7 +12,7 @@ def to_by_question(rows):
         key = (row[0],row[1])
         if len(by_question)==0 or by_question[-1][0]!=key:
             by_question.append([key,[]])
-        by_question[-1][1].append(row)
+        by_question[-1][1].append(row[2:4])
     return by_question
 
 data_dev =to_by_question( [x.split("\t") for x in open("dev_3783.tsv").readlines()])
@@ -22,10 +22,10 @@ print(data_dev[0])
 
 
 def question_to_pair(question):
-    options ="\n".join([f"{i}. {x[2]}" for i,x in enumerate(question[1])])
-    answers = " ".join([str(i) for i,x in enumerate(question[1]) if x[3]=="yes"])
+    options ="\n".join([f"{i}. {x[0]}" for i,x in enumerate(question[1])])
+    answers = " ".join([str(i) for i,x in enumerate(question[1]) if x[1]=="yes"])
     return [{"role":"user","content":f"Consider the context '{question[0][0]}' and question '{question[0][1]}'. Which of these answers are plausible?\n{options}"},{"role":"assistant","content":answers}]
-sys_prompt = {"role": "system", "content": "Your job is to classify which answers to natural language questions are plausible. You will see 1 to 15 options, and you have to classify which ones of them are plausible. Write the numbers of all the plausible answers seperated by spaces, without any discussion or explanation."}
+sys_prompt = {"role": "system", "content": "Your job is to classify which answers to natural language questions are plausible. You will see 1 to 15 options, and you have to classify which ones of them are plausible. Write the numbers of all the plausible answers seperated by spaces, without any discussion or explanation. There are often multiple phrasings of the same answer, and you must answer them consistently."}
 def generate_openai_chat(shot_questions, question):
     response = openai.ChatCompletion.create(
             model="gpt-4",# "gpt-3.5-turbo"
@@ -58,7 +58,7 @@ outfilename = "openai_output.txt"
 responses =[x for x in open(outfilename).read().split("\n") if len(x)>1] if os.path.isfile(outfilename) else []
 print(len(data_test),len(responses))
 print(responses[:3])
-k = 5
+k = 8
 from wrong_examples_using import few_shots
 wrong_examples = []
 
@@ -70,15 +70,15 @@ def evaluate():
     pbar = tqdm(enumerate(data_dev[k:]))
     for i,question in pbar:
         openai_response = generate_middleman(few_shots,question)
-        if openai_response not in ["yes","no"]:
-            responses.append("invalid")
-        response_numbers = [int(x) for x in openai_response.split(" ")]
+        print(openai_response)
+        response_numbers = [int(x) for x in openai_response.split(" ") if len(x)>0]
         responses.append(openai_response)
-        if all([(i in response_numbers) == (q[3]=="yes") for i,q in enumerate(question[1])]):
+        if all([(i in response_numbers) == (q[1]=="yes") for i,q in enumerate(question[1])]):
             num_right+=1
-            wrong_examples.append(question)
         else:
-            print(question,openai_response)
+            wrong_examples.append(question)
+            print(*question[0])
+            print("\n".join([q[0]+" "+q[1]+" "+str((i in response_numbers) == (q[1]=="yes") )for i,q in enumerate(question[1])]))
         if len(wrong_examples)%10==0 and len(wrong_examples)!=0:
             open("wrong_examples","w").write(str(wrong_examples))
             
@@ -123,3 +123,6 @@ def postlook():
     print("numoptions",numoptions)
     # next thing to do: show the model all the options at once, and choose 1 or 2 of them!
 evaluate()
+
+# error types
+# it classifies different wordings differently?

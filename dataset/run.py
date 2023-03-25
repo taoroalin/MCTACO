@@ -76,7 +76,7 @@ def evaluate():
         pbar.set_description(f"{num_right/(i+1)} fp {false_p} fn {false_n}")
     open(outfilename,"w").write("\n".join(responses))
 def run():
-    pbar = tqdm(enumerate(data_test[len(responses):]))
+    pbar = enumerate(tqdm(data_test[len(responses):]))
     for i,datum in pbar:
         openai_response = generate_middleman(data_dev[:k],datum)
         if openai_response not in ["yes","no"]:

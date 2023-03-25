@@ -23,9 +23,9 @@ print(data_dev[0])
 
 def question_to_pair(question):
     options ="\n".join([f"{i}. {x[0]}" for i,x in enumerate(question[1])])
-    answers = " ".join([str(i) for i,x in enumerate(question[1]) if x[1]=="yes"])
+    answers = " ".join([str(i)+" "+x[1] for i,x in enumerate(question[1])])
     return [{"role":"user","content":f"Consider the context '{question[0][0]}' and question '{question[0][1]}'. Which of these answers are plausible?\n{options}"},{"role":"assistant","content":answers}]
-sys_prompt = {"role": "system", "content": "Your job is to classify which answers to natural language questions are plausible. You will see 1 to 15 options, and you have to classify which ones of them are plausible. Write the numbers of all the plausible answers seperated by spaces, without any discussion or explanation. There are often multiple phrasings of the same answer, and you must answer them consistently."}
+sys_prompt = {"role": "system", "content": "Your job is to classify which answers to natural language questions are plausible. You will see 1 to 15 options, and you have to classify which ones of them are plausible. Write each number followed by the classification 'yes' or 'no' seperated by spaces with no discussion or explanation. When there are multiple phrasings of the same answer, for instance 'yes, it was' and 'yes', or '24 hours' and '1 day', you must answer them consistently. Sometimes there are no plausible answers, in which case you say no to all of them."}
 def generate_openai_chat(shot_questions, question):
     response = openai.ChatCompletion.create(
             model="gpt-4",# "gpt-3.5-turbo"
@@ -51,7 +51,7 @@ def generate_middleman(shot_questions, question):
 			os.environ["MIDDLEMAN_API_KEY"],
 		"engine_public_name": "vengeful-lizard",
         "prevent_canary":True,
-		"max_tokens":1,"temp":0,}
+		"max_tokens":100,"temp":0,}
     response = requests.post("https://middleman.modeleval.org/completions",json=req).json()
     return response["outputs"][0]["completion"]
 outfilename = "openai_output.txt"
@@ -71,14 +71,15 @@ def evaluate():
     for i,question in pbar:
         openai_response = generate_middleman(few_shots,question)
         print(openai_response)
-        response_numbers = [int(x) for x in openai_response.split(" ") if len(x)>0]
-        responses.append(openai_response)
-        if all([(i in response_numbers) == (q[1]=="yes") for i,q in enumerate(question[1])]):
+        response_classes = [x for x in openai_response.split(" ") if x in ["yes","no"]]
+        assert len(response_classes)==len(question[1])
+        responses.append(response_classes)
+        if all([a==b for (_,b),a in zip(question[1], response_classes)]):
             num_right+=1
         else:
             wrong_examples.append(question)
             print(*question[0])
-            print("\n".join([q[0]+" "+q[1]+" "+str((i in response_numbers) == (q[1]=="yes") )for i,q in enumerate(question[1])]))
+            print("\n".join([q+" "+b+" "+a for (q,b),a in zip(question[1], response_classes)]))
         if len(wrong_examples)%10==0 and len(wrong_examples)!=0:
             open("wrong_examples","w").write(str(wrong_examples))
             
